@@ -1,0 +1,107 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+
+  nginx:
+    endpoint: "http://127.0.0.1/nginx_status"
+
+  filelog:
+    include:
+      - /var/log/nginx/access.log
+
+  hostmetrics:
+    collection_interval: 10s
+    scrapers:
+      cpu: {}
+      load: {}
+      memory: {}
+      disk: {}
+
+connectors:
+  spanmetrics:
+    histogram:
+      explicit:
+        buckets: [2ms, 5ms, 10ms, 50ms, 100ms, 250ms, 500ms, 1s, 2s, 5s]
+    dimensions:
+      - name: http.method
+        default: GET
+      - name: http.status_code
+    exemplars:
+      enabled: true
+      max_per_data_point: 5
+    dimensions_cache_size: 10000
+    aggregation_temporality: "AGGREGATION_TEMPORALITY_CUMULATIVE"
+
+processors:
+  batch:
+
+  resource/nginx:
+    attributes:
+      - key: service.name
+        value: "nginx"
+        action: upsert
+
+exporters:
+  elasticsearch:
+    endpoints: ["https://192.168.1.134:9200"]
+    user: "elastic"
+    password: "password"
+    tls:
+      insecure_skip_verify: true
+
+  prometheus:
+    endpoint: "0.0.0.0:9464"
+    enable_open_metrics: true
+    send_timestamps: true
+
+    resource_to_telemetry_conversion:
+      enabled: true
+    translation_strategy: "UnderscoreEscapingWithoutSuffixes"
+
+  otlp/jaeger:
+    endpoint: http://192.168.1.136:4317
+    tls:
+      insecure: true
+
+  otlphttp/loki:
+    endpoint: "http://192.168.1.136:3100/otlp"
+    tls:
+      insecure: true
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [elasticsearch, otlp/jaeger, spanmetrics]
+
+    metrics/nginx:
+      receivers: [nginx]
+      processors: [batch]
+      exporters: [elasticsearch, prometheus]
+
+    metrics/host_linux:
+      receivers: [hostmetrics]
+      processors: [batch]
+      exporters: [elasticsearch, prometheus]
+
+    metrics/app_api:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [elasticsearch, prometheus]
+
+    metrics/spanmetrics:
+      receivers: [spanmetrics]
+      processors: [batch]
+      exporters: [elasticsearch, prometheus]
+
+    logs/nginx:
+      receivers: [filelog]
+      processors: [batch, resource/nginx]
+      exporters: [elasticsearch, otlphttp/loki]
+
+    logs/app_api:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [elasticsearch, otlphttp/loki]
