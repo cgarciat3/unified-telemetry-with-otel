@@ -6,3 +6,4 @@ opentelemetry-exporter-otlp
 opentelemetry-instrumentation-fastapi
 opentelemetry-instrumentation-requests
 opentelemetry-instrumentation-sqlite3
+opentelemetry-instrumentation-system-metrics
